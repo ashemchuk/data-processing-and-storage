@@ -19,7 +19,7 @@ import java.util.concurrent.Executors;
 public class Main {
     public static void main(String[] args) {
         ExecutorService workers = Executors.newFixedThreadPool(2);
-        HashMap<String, Key> genarations = new HashMap<>();
+        HashMap<String, Key> generations = new HashMap<>();
         Queue<GenerationResult> results = new ConcurrentLinkedQueue<>();
         try (Selector selector = Selector.open();
              ServerSocketChannel server = ServerSocketChannel.open()) {
@@ -37,11 +37,11 @@ public class Main {
                 while ((result = results.poll()) != null) {
                     if (result.error() != null) {
                         System.err.println("Key generation failed: " + result.error().getMessage());
-                        genarations.remove(result.name());
+                        generations.remove(result.name());
                         continue;
                     }
 
-                    Key entry = genarations.get(result.name());
+                    Key entry = generations.get(result.name());
                     entry.setKeys(result.keys());
                     entry.setState(KeyState.DONE);
                 }
@@ -68,16 +68,16 @@ public class Main {
                     } else if (selectionKey.isReadable()) {
                         String name = readName(selectionKey);
                         if (name != null) {
-                            if (genarations.containsKey(name) && genarations.get(name).getState() == KeyState.DONE) {
+                            if (generations.containsKey(name) && generations.get(name).getState() == KeyState.DONE) {
                                 // prepare the response
-                            } else if (genarations.containsKey(name) && genarations.get(name).getState() == KeyState.IN_PROGRESS) {
+                            } else if (generations.containsKey(name) && generations.get(name).getState() == KeyState.IN_PROGRESS) {
                                 // waiting for results & add another waiting user
-                                genarations.get(name).getWaitingUsers().add(selectionKey);
+                                generations.get(name).getWaitingUsers().add(selectionKey);
                             } else { // computing keys
                                 Key generatingKey = new Key(KeyState.IN_PROGRESS, null);
                                 // add 1st waiting user
                                 generatingKey.getWaitingUsers().add(selectionKey);
-                                genarations.put(name, generatingKey);
+                                generations.put(name, generatingKey);
                                 workers.submit(() -> {
                                     try {
                                         KeyGenerator generator = new KeyGenerator();
