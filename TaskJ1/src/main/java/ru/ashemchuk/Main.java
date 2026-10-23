@@ -2,6 +2,7 @@ package ru.ashemchuk;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
@@ -38,6 +39,8 @@ public class Main {
                             client.close();
                             System.err.println("Client error: " + e.getMessage());
                         }
+                    } else if (key.isReadable()) {
+                        readName(key);
                     }
                 }
                 readyKeys.clear();
@@ -45,5 +48,31 @@ public class Main {
         } catch (IOException e) {
             System.err.println("Server error: " + e.getMessage());
         }
+    }
+    private static void readName(SelectionKey key){
+        StringBuilder name = (StringBuilder) key.attachment();
+        SocketChannel client = (SocketChannel) key.channel();
+        try {
+            ByteBuffer buffer = ByteBuffer.allocate(256);
+            int read = client.read(buffer);
+            if (read == -1) {
+                System.out.println("Client is disconnected before end of name");
+                client.close();
+                return;
+            }
+            buffer.flip();
+            while (buffer.hasRemaining()) {
+                byte b = buffer.get();
+                if (b == 0) { // /0 - end of name
+                    System.out.println("Name is: " + name);
+                    client.close();
+                    return;
+                }
+                name.append((char)b);
+            }
+        } catch (IOException e) {
+            System.out.println("SocketChannel: "+ e.getMessage());
+        }
+
     }
 }
