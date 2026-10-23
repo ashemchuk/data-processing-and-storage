@@ -49,7 +49,7 @@ public class Main {
             System.err.println("Server error: " + e.getMessage());
         }
     }
-    private static void readName(SelectionKey key){
+    static void readName(SelectionKey key){
         StringBuilder name = (StringBuilder) key.attachment();
         SocketChannel client = (SocketChannel) key.channel();
         try {
@@ -63,7 +63,7 @@ public class Main {
             buffer.flip();
             while (buffer.hasRemaining()) {
                 byte b = buffer.get();
-                if (b == 0) { // /0 - end of name
+                if (b == 0) { // null byte ends the name
                     System.out.println("Name is: " + name);
                     client.close();
                     return;

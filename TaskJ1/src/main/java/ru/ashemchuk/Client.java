@@ -6,12 +6,17 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
 public class Client {
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, InterruptedException {
         try (Socket socket = new Socket("localhost", 8080)) {
-            System.out.println("YOHOO");
+            System.out.println("Connected to server");
             OutputStream output = socket.getOutputStream();
 
-            output.write("Anna".getBytes(StandardCharsets.US_ASCII));
+            output.write("An".getBytes(StandardCharsets.US_ASCII));
+            output.flush();
+
+            Thread.sleep(10_000);
+
+            output.write("na".getBytes(StandardCharsets.US_ASCII));
             output.write(0);
             output.flush();
         }
