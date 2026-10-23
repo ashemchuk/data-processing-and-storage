@@ -7,17 +7,35 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.security.GeneralSecurityException;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.KeySpec;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Predicate;
 
 public class Main {
     public static void main(String[] args) {
+        PrivateKey privateKey;
+        try {
+            // fixme hardcoded path
+             privateKey = loadKey("config/SUPER_SECRET_ISSUER.key");
+        } catch (IOException | GeneralSecurityException | IllegalArgumentException e) {
+            System.err.println("Issuer private key loading failed: " + e.getMessage());
+            return;
+        }
         ExecutorService workers = Executors.newFixedThreadPool(2);
         HashMap<String, Key> generations = new HashMap<>();
         Queue<GenerationResult> results = new ConcurrentLinkedQueue<>();
@@ -27,7 +45,7 @@ public class Main {
             server.bind(new InetSocketAddress(8080));
             server.configureBlocking(false);
             server.register(selector, SelectionKey.OP_ACCEPT);
-            System.out.println("Waiting for connections on port 8080...");
+            System.out.println("Waiting for connec tions on port 8080...");
 
             while (true) {
                 selector.select();
@@ -131,4 +149,16 @@ public class Main {
 
         return null;
     }
+    public static PrivateKey loadKey(String location) throws IOException, GeneralSecurityException {
+        String pem = Files.readString(Paths.get(location));
+        String encoded = pem
+            .replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "");
+        // MIME - allows spaces
+        byte[] bytes = Base64.getMimeDecoder().decode(encoded);
+        KeySpec keySpec = new PKCS8EncodedKeySpec(bytes);
+            KeyFactory keyFactory = KeyFactory.getInstance("EC");
+            return keyFactory.generatePrivate(keySpec);
+    }
 }
+
