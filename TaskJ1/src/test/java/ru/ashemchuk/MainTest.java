@@ -80,7 +80,7 @@ class MainTest {
             SocketChannel connection = server.accept();
             connections.add(connection);
             connection.configureBlocking(false);
-            connection.register(selector, SelectionKey.OP_READ, new StringBuilder());
+            connection.register(selector, SelectionKey.OP_READ, new ClientState());
             return client;
         } catch (IOException | RuntimeException e) {
             client.close();
