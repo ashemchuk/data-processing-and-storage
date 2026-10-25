@@ -1,5 +1,7 @@
 package ru.ashemchuk;
 
+import ru.ashemchuk.generation.KeyGenerator;
+
 import org.junit.jupiter.api.Test;
 
 import java.security.KeyPair;

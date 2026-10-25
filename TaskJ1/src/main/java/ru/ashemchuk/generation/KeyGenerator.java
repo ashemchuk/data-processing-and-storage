@@ -1,4 +1,4 @@
-package ru.ashemchuk;
+package ru.ashemchuk.generation;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;

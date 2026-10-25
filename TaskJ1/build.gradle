@@ -1,5 +1,15 @@
 plugins {
     id 'java'
+    id 'application'
+}
+
+application {
+    mainClass = 'ru.ashemchuk.Main'
+}
+
+tasks.register('runClient', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'ru.ashemchuk.Client'
 }
 
 group = 'ru.ashemchuk'

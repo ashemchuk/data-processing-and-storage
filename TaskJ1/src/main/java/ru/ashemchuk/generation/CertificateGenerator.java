@@ -1,4 +1,4 @@
-package ru.ashemchuk;
+package ru.ashemchuk.generation;
 
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
@@ -30,17 +30,17 @@ public class CertificateGenerator {
     ) throws OperatorCreationException, CertificateException {
 
         X500Name subject = new X500NameBuilder(BCStyle.INSTANCE)
-            .addRDN(BCStyle.CN, name) // CN - common name
+            .addRDN(BCStyle.CN, name)
             .build();
 
         X500Name issuer = new X500NameBuilder(BCStyle.INSTANCE)
             .addRDN(BCStyle.CN, issuerName)
             .build();
 
-        //20 bytes = 160 bits is max serial size in X.509
-        //159 bits -> fewer collisions
+
+
         BigInteger serial = new BigInteger(159, new SecureRandom())
-            .setBit(158); // guarantees > 0 & 159 bit size
+            .setBit(158);
 
         Instant now = Instant.now();
         Date notBefore = Date.from(now);
