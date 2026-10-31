@@ -10,6 +10,10 @@ Java 17+, Gradle Wrapper. Run commands from `TaskJ1`.
 
 The distribution includes Bouncy Castle. The RSA-8192 test can take noticeably longer than other tests.
 
+Coverage reports are generated after `./gradlew test`. Open
+`build/reports/jacoco/test/html/index.html` for the HTML report. The XML report is
+`build/reports/jacoco/test/jacocoTestReport.xml`. No application classes are excluded.
+
 ## Server
 
 ```bash

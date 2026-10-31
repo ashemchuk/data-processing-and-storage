@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -90,6 +91,59 @@ class ServerTest {
     }
 
     @Test
+    void sendsCompleteLargeResponse() throws Exception {
+        CryptoIdentity large = TestIdentities.withLargeCertificate(identity);
+        try (RunningServer running = new RunningServer(name -> large);
+             Socket client = running.connect()) {
+            send(client, "Anna\0");
+            CryptoIdentity received = read(client);
+            assertArrayEquals(large.key().getEncoded(), received.key().getEncoded());
+            assertArrayEquals(large.cert().getEncoded(), received.cert().getEncoded());
+        }
+    }
+
+    @Test
+    void closesAllWaitingClientsWhenGenerationFails() throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger calls = new AtomicInteger();
+        CryptoGenerator generator = new CryptoGenerator(2, name -> {
+            if (name.equals("fail")) {
+                calls.incrementAndGet();
+                if (!release.await(10, TimeUnit.SECONDS)) throw new IOException("Test timed out");
+                throw new IOException("Expected failure");
+            }
+            return identity;
+        });
+        CompletableFuture<CryptoIdentity> pending = generator.getOrGenerate("fail");
+
+        try (RunningServer running = new RunningServer(generator);
+             Socket first = running.connect();
+             Socket second = running.connect()) {
+            send(first, "fail\0");
+            send(second, "fail\0");
+
+            // wait until both requests subscribe to the pending result
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (pending.getNumberOfDependents() < 2 && System.nanoTime() < deadline) {
+                LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+            }
+            assertEquals(2, pending.getNumberOfDependents(), "Both clients must be waiting");
+            release.countDown();
+
+            assertEquals(-1, first.getInputStream().read());
+            assertEquals(-1, second.getInputStream().read());
+            assertEquals(1, calls.get(), "Both requests must share one generation");
+
+            try (Socket healthy = running.connect()) {
+                send(healthy, "Anna\0");
+                assertIdentity(read(healthy));
+            }
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
     void closesFailedRequestsAndContinuesServing() throws Exception {
         try (RunningServer running = new RunningServer(name -> {
             if (name.equals("fail")) throw new IOException("Expected failure");
@@ -136,7 +190,11 @@ class ServerTest {
         private final Future<?> task;
 
         RunningServer(CryptoGenerator.IdentityFactory factory) throws IOException {
-            generator = new CryptoGenerator(2, factory);
+            this(new CryptoGenerator(2, factory));
+        }
+
+        RunningServer(CryptoGenerator generator) throws IOException {
+            this.generator = generator;
             server = new Server(0, generator);
             task = thread.submit(() -> { server.start(); return null; });
         }
