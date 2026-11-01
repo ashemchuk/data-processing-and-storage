@@ -44,30 +44,15 @@ class ClientTest {
             var exchange = thread.submit(() -> {
                 try (var socket = listener.accept()) {
                     socket.setSoTimeout(5000);
-                    ByteArrayOutputStream request = new ByteArrayOutputStream();
-                    int value;
-                    while ((value = socket.getInputStream().read()) != 0) {
-                        if (value == -1) throw new EOFException("Incomplete client request");
-                        request.write(value);
-                    }
+                    String request = readRequest(socket);
                     socket.getOutputStream().write(response);
-                    return request.toString(java.nio.charset.StandardCharsets.US_ASCII);
+                    return request;
                 }
             });
 
             Path output = temporaryDirectory.resolve("identity");
             Path log = temporaryDirectory.resolve("client.log");
-            List<String> command = new ArrayList<>();
-            command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
-            // include child-process coverage when running under jacoco
-            ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
-                    .filter(arg -> arg.startsWith("-javaagent:") && arg.toLowerCase(Locale.ROOT).contains("jacoco"))
-                    .forEach(command::add);
-            command.addAll(List.of("-cp", Path.of(Client.class.getProtectionDomain()
-                            .getCodeSource().getLocation().toURI()).toString(),
-                    Client.class.getName(), "--name", "Anna", "--host", "127.0.0.1",
-                    "--port", String.valueOf(listener.getLocalPort()), "--output-dir", output.toString()));
-            client = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+            client = startClient(listener.getLocalPort(), output);
 
             assertEquals("Anna", exchange.get(10, TimeUnit.SECONDS));
             assertTrue(client.waitFor(10, TimeUnit.SECONDS), "Client must finish");
@@ -95,12 +80,100 @@ class ClientTest {
             signature.update(message);
             assertTrue(signature.verify(signed), "Saved private and public keys must match");
         } finally {
-            if (client != null && client.isAlive()) {
-                client.destroyForcibly();
-                client.waitFor(3, TimeUnit.SECONDS);
-            }
+            stopClient(client);
             thread.shutdownNow();
             assertTrue(thread.awaitTermination(3, TimeUnit.SECONDS), "Test server must stop");
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    void delaysResponseProcessingAfterSendingCompleteRequest() throws Exception {
+        var identity = TestIdentities.create();
+        var encoded = new ResponseEncoder().encode(identity);
+        byte[] response = new byte[encoded.remaining()];
+        encoded.get(response);
+        Path output = temporaryDirectory.resolve("delayed");
+        Process client = null;
+
+        try (ServerSocket listener = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
+            listener.setSoTimeout(5000);
+            client = startClient(listener.getLocalPort(), output, "--delay", "2");
+            try (var socket = listener.accept()) {
+                socket.setSoTimeout(1000);
+                assertEquals("Anna", readRequest(socket));
+                socket.getOutputStream().write(response);
+                socket.getOutputStream().flush();
+
+                assertFalse(client.waitFor(500, TimeUnit.MILLISECONDS),
+                        "Client must wait even when the response is ready");
+                assertFalse(Files.exists(output.resolve("identity.key")));
+                assertFalse(Files.exists(output.resolve("identity.crt")));
+
+                assertTrue(client.waitFor(10, TimeUnit.SECONDS), "Client must finish after the delay");
+                assertEquals(0, client.exitValue(), Files.readString(temporaryDirectory.resolve("client.log")));
+                assertTrue(Files.isRegularFile(output.resolve("identity.key")));
+                assertTrue(Files.isRegularFile(output.resolve("identity.crt")));
+            }
+        } finally {
+            stopClient(client);
+        }
+    }
+
+    @Test
+    @Timeout(15)
+    void disconnectsAfterCompleteRequestWithoutWaitingForResponse() throws Exception {
+        Path output = temporaryDirectory.resolve("disconnected");
+        Process client = null;
+
+        try (ServerSocket listener = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
+            listener.setSoTimeout(5000);
+            client = startClient(listener.getLocalPort(), output, "--disconnect", "--delay", "60");
+            try (var socket = listener.accept()) {
+                socket.setSoTimeout(5000);
+                assertEquals("Anna", readRequest(socket));
+
+                // keep the server side open without sending a response
+                assertTrue(client.waitFor(5, TimeUnit.SECONDS), "Disconnect must skip reading and delay");
+                assertEquals(0, client.exitValue(), Files.readString(temporaryDirectory.resolve("client.log")));
+                assertEquals(-1, socket.getInputStream().read(), "Client must close its connection");
+                assertFalse(Files.exists(output), "Disconnect must not create output files");
+            }
+        } finally {
+            stopClient(client);
+        }
+    }
+
+    private String readRequest(java.net.Socket socket) throws java.io.IOException {
+        ByteArrayOutputStream request = new ByteArrayOutputStream();
+        int value;
+        while ((value = socket.getInputStream().read()) != 0) {
+            if (value == -1) throw new EOFException("Incomplete client request");
+            request.write(value);
+        }
+        return request.toString(java.nio.charset.StandardCharsets.US_ASCII);
+    }
+
+    private Process startClient(int port, Path output, String... options) throws Exception {
+        List<String> command = new ArrayList<>();
+        command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        // include child-process coverage when running under jacoco
+        ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
+                .filter(arg -> arg.startsWith("-javaagent:") && arg.toLowerCase(Locale.ROOT).contains("jacoco"))
+                .forEach(command::add);
+        command.addAll(List.of("-cp", Path.of(Client.class.getProtectionDomain()
+                        .getCodeSource().getLocation().toURI()).toString(),
+                Client.class.getName(), "--name", "Anna", "--host", "127.0.0.1",
+                "--port", String.valueOf(port), "--output-dir", output.toString()));
+        command.addAll(List.of(options));
+        return new ProcessBuilder(command).redirectErrorStream(true)
+                .redirectOutput(temporaryDirectory.resolve("client.log").toFile()).start();
+    }
+
+    private void stopClient(Process client) throws InterruptedException {
+        if (client != null && client.isAlive()) {
+            client.destroyForcibly();
+            assertTrue(client.waitFor(3, TimeUnit.SECONDS), "Client process must stop");
         }
     }
 
