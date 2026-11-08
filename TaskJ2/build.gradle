@@ -1,5 +1,7 @@
 plugins {
     id 'java'
+    id 'application'
+    id 'jacoco'
 }
 
 group = 'ru.ashemchuk'
@@ -17,4 +19,23 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        html.required = true
+    }
+    doLast {
+        println "JaCoCo report: ${reports.html.outputLocation.get().file('index.html').asFile.toURI()}"
+    }
+}
+
+application {
+    mainClass = 'ru.ashemchuk.Main'
+}
+
+tasks.named('run') {
+    standardInput = System.in
 }
