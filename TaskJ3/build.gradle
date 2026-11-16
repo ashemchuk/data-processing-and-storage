@@ -1,15 +1,23 @@
 plugins {
     id 'java'
+    id 'application'
+    id 'jacoco'
 }
 
 group = 'ru.ashemchuk'
 version = '1.0-SNAPSHOT'
 
-repositories {
-    mavenCentral()
+repositories { mavenCentral() }
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
 }
 
+application { mainClass = 'ru.ashemchuk.Main' }
+
 dependencies {
+    implementation 'com.google.code.gson:gson:2.13.1'
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -17,4 +25,20 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    finalizedBy jacocoTestReport
+}
+
+jacoco { toolVersion = '0.8.13' }
+
+jacocoTestReport {
+    dependsOn test
+    outputs.upToDateWhen { false }
+
+    reports {
+        html.required = true
+    }
+
+    doLast {
+        println "JaCoCo report: ${reports.html.outputLocation.get().file('index.html').asFile.toURI()}"
+    }
 }
